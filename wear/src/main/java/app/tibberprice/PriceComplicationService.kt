@@ -45,7 +45,9 @@ class PriceComplicationService : SuspendingComplicationDataSourceService() {
         val icon = MonochromaticImage.Builder(Icon.createWithResource(this, R.drawable.ic_bolt)).build()
         val tap = PendingIntent.getActivity(
             this, 0,
-            Intent(this, PriceGraphActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            // CLEAR_TASK: every tap opens a fresh graph instead of resurfacing an old one.
+            Intent(this, PriceGraphActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 

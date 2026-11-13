@@ -10,8 +10,11 @@ import android.os.Bundle
 import android.view.View
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -22,16 +25,32 @@ import kotlin.math.roundToInt
 class PriceGraphActivity : Activity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private lateinit var view: PriceGraphView
+    private var refreshJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val view = PriceGraphView(this)
+        view = PriceGraphView(this)
         setContentView(view)
-        scope.launch {
-            val now = Instant.now()
-            val slots = TibberPrices(this@PriceGraphActivity).slots(now)
-            view.show(slots.filter { it.start.plusSeconds(3600) > now })
+    }
+
+    // Reload every time the page comes to the front (the activity can sit in the
+    // background for hours), and once a minute while it stays visible.
+    override fun onResume() {
+        super.onResume()
+        refreshJob = scope.launch {
+            while (isActive) {
+                val now = Instant.now()
+                val slots = TibberPrices(this@PriceGraphActivity).slots(now)
+                view.show(slots.filter { it.start.plusSeconds(3600) > now })
+                delay(60_000)
+            }
         }
+    }
+
+    override fun onPause() {
+        refreshJob?.cancel()
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -72,8 +91,11 @@ private class PriceGraphView(context: Context) : View(context) {
 
         // Header
         label(canvas, "Now ${cents(now.total)}", w / 2, h * 0.19f, 20f, Color.WHITE, bold = true)
+        // Name the day when the cheapest hour isn't today, so "03:00" can't be read as last night.
+        val cheapDay = if (local(cheapest).toLocalDate() != local(now).toLocalDate())
+            local(cheapest).format(dayFmt) + " " else ""
         val cheapText = if (cheapest == now) "Cheapest is now"
-        else "Cheapest ${local(cheapest).format(hourFmt)} · ${cents(cheapest.total)}"
+        else "Cheapest $cheapDay${local(cheapest).format(hourFmt)} · ${cents(cheapest.total)}"
         label(canvas, cheapText, w / 2, h * 0.27f, 13f, color(0f))
 
         // Bars, baseline at €0 so heights stay honest; colour carries the cheap/expensive signal.
